@@ -1,0 +1,169 @@
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+const TOOL_PALETTE = {
+  "needle_holder": { name: "Needle Holder", color: "#ef4444" },
+  "grasper": { name: "Grasper", color: "#3b82f6" },
+  "clip_applier": { name: "Clip Applier", color: "#a855f7" },
+  "scissors": { name: "Scissors", color: "#22c55e" },
+  "dissector": { name: "Dissector", color: "#f59e0b" },
+  "energy_device": { name: "Energy Device", color: "#ec4899" }
+};
+
+createApp({
+  delimiters: ["[[", "]]"],
+
+  setup() {
+    const dashboard = ref({
+      session_id: null,
+      status: "WAITING_BEFORE",
+      captures: { before: null, after: null },
+      counts: { before: {}, after: {} }
+    });
+    const device = ref({ connected: false, seconds_since_last_seen: null });
+    const overlayVisible = ref(true);
+    const showResetModal = ref(false);
+    const resetting = ref(false);
+    const loadError = ref(false);
+    let pollTimer = null;
+
+    const phases = [
+      { key: "before", title: "수술 전", eyebrow: "BEFORE SURGERY" },
+      { key: "after", title: "수술 후", eyebrow: "AFTER SURGERY" },
+    ];
+
+    // AI 탐지 도구만 동적으로 렌더링 (0개인 것은 제외)
+    const activeTools = computed(() => {
+      const beforeCounts = dashboard.value.counts?.before || {};
+      const afterCounts = dashboard.value.counts?.after || {};
+      const allKeys = new Set([...Object.keys(beforeCounts), ...Object.keys(afterCounts)]);
+
+      return Array.from(allKeys).map(key => {
+        const b = beforeCounts[key] || 0;
+        const a = afterCounts[key] || 0;
+        return {
+          key: key,
+          name: TOOL_PALETTE[key]?.name || key,
+          color: TOOL_PALETTE[key]?.color || "#aaaaaa",
+          before: b,
+          after: a,
+          difference: a - b
+        };
+      }).filter(tool => tool.before > 0 || tool.after > 0);
+    });
+
+    const totals = computed(() => {
+      const bSum = activeTools.value.reduce((sum, t) => sum + t.before, 0);
+      const aSum = activeTools.value.reduce((sum, t) => sum + t.after, 0);
+      return {
+        before: activeTools.value.length ? bSum : "—",
+        after: activeTools.value.length ? aSum : "—",
+        difference: activeTools.value.length ? aSum - bSum : null,
+      };
+    });
+
+    const lastSeenText = computed(() => {
+      const seconds = device.value.seconds_since_last_seen;
+      if (seconds === null || seconds === undefined) return "—";
+      if (seconds < 1) return `${seconds.toFixed(1)}초 전`;
+      return `${Math.round(seconds)}초 전`;
+    });
+
+    const sessionStatusTitle = computed(() => {
+      const titles = {
+        WAITING_BEFORE: "수술 전 촬영을 기다리고 있습니다",
+        WAITING_AFTER: "수술 후 촬영을 기다리고 있습니다",
+        COMPLETED: "수술 전후 비교가 완료되었습니다",
+      };
+      return titles[dashboard.value.status] || "분석 상태를 확인하고 있습니다";
+    });
+
+    const sessionStatusDescription = computed(() => {
+      const descriptions = {
+        WAITING_BEFORE: "첫 번째 촬영 결과가 수술 전 이미지로 등록됩니다.",
+        WAITING_AFTER: "두 번째 촬영 결과가 도착하면 비교표가 완성됩니다.",
+        COMPLETED: "수량 차이가 있는 셀을 확인해주세요.",
+      };
+      return descriptions[dashboard.value.status] || "잠시만 기다려주세요.";
+    });
+
+    function captureFor(phase) { return dashboard.value.captures?.[phase] || null; }
+
+    function formatDate(value) {
+      if (!value) return "—";
+      return new Intl.DateTimeFormat("ko-KR", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+      }).format(new Date(value));
+    }
+
+    function displayCount(value) { return value === null || value === undefined ? "—" : value; }
+    function displayDifference(value) {
+      if (value === null || value === undefined) return "—";
+      return value > 0 ? `+${value}` : `${value}`;
+    }
+
+    function differenceClass(value) {
+      if (value === null || value === undefined) return "is-pending";
+      if (value < 0) return "is-negative";
+      if (value > 0) return "is-positive";
+      return "is-same";
+    }
+
+    async function fetchJson(url, options) {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json();
+    }
+
+    async function loadLatest() {
+      try {
+        const [deviceData, dashboardData] = await Promise.all([
+          fetchJson("/api/device/status"),
+          fetchJson("/api/dashboard/current"),
+        ]);
+        device.value = deviceData;
+        dashboard.value = dashboardData;
+        loadError.value = false;
+      } catch (error) {
+        console.error(error);
+        loadError.value = true;
+      }
+    }
+
+    function getTimestampedUrl(url) {
+      if (!url) return "";
+      return `${url}?t=${new Date().getTime()}`;
+    }
+
+    async function resetSession() {
+      resetting.value = true;
+      try {
+        await fetchJson("/api/session/reset", { method: "POST" });
+        await loadLatest();
+        showResetModal.value = false;
+      } catch (error) {
+        console.error(error);
+        loadError.value = true;
+      } finally {
+        resetting.value = false;
+      }
+    }
+
+    onMounted(() => {
+      loadLatest();
+      pollTimer = window.setInterval(loadLatest, 1000);
+    });
+
+    onUnmounted(() => {
+      if (pollTimer) window.clearInterval(pollTimer);
+    });
+
+    return {
+      dashboard, device, phases, activeTools, totals,
+      lastSeenText, sessionStatusTitle, sessionStatusDescription,
+      overlayVisible, showResetModal, resetting, loadError,
+      captureFor, formatDate, displayCount, displayDifference,
+      differenceClass, resetSession, getTimestampedUrl,
+    };
+  },
+}).mount("#app");

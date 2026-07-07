@@ -1,0 +1,10 @@
+{
+  "detections": [
+    {"class_name": "needle_holder", "confidence": 0.96, "bbox": [100, 150, 200, 500]},
+    {"class_name": "needle_holder", "confidence": 0.94, "bbox": [120, 160, 220, 510]},
+    {"class_name": "grasper", "confidence": 0.91, "bbox": [300, 200, 400, 600]},
+    {"class_name": "grasper", "confidence": 0.88, "bbox": [320, 210, 420, 610]},
+    {"class_name": "grasper", "confidence": 0.85, "bbox": [340, 220, 440, 620]},
+    {"class_name": "clip_applier", "confidence": 0.98, "bbox": [500, 100, 600, 450]}
+  ]
+}

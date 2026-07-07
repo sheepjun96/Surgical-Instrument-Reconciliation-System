@@ -1,0 +1,8 @@
+{
+  "detections": [
+    {"class_name": "needle_holder", "confidence": 0.95, "bbox": [110, 160, 210, 510]},
+    {"class_name": "needle_holder", "confidence": 0.92, "bbox": [130, 170, 230, 520]},
+    {"class_name": "grasper", "confidence": 0.89, "bbox": [310, 210, 410, 610]},
+    {"class_name": "grasper", "confidence": 0.86, "bbox": [330, 220, 430, 620]}
+  ]
+}

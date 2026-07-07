@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="수술 전후 수술도구 비교 모니터링 화면">
+  <title>수술도구 모니터</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
+</head>
+<body>
+  <div id="app" v-cloak>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 28 28"><path d="M14 3v22M3 14h22"/></svg>
+        </div>
+        <div>
+          <h1>수술도구 모니터</h1>
+          <p>Surgical instrument reconciliation</p>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <div class="session-chip">
+          <span>현재 세션</span>
+          <strong>#[[ dashboard.session_id ?? '—' ]]</strong>
+        </div>
+
+        <div class="connection-card" :class="device.connected ? 'is-connected' : 'is-disconnected'" data-testid="camera-status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <strong>카메라 [[ device.connected ? '연결됨' : '미연결' ]]</strong>
+            <small v-if="device.connected">마지막 응답 [[ lastSeenText ]]</small>
+            <small v-else>Jetson Nano 응답 대기 중</small>
+          </div>
+        </div>
+
+        <button class="reset-button" type="button" @click="showResetModal = true" data-testid="reset-session">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6M20 20v-6h-6M5.5 16a8 8 0 0 0 13-2M18.5 8A8 8 0 0 0 5.5 10"/></svg>
+          새 수술 시작
+        </button>
+      </div>
+    </header>
+
+    <main class="dashboard-shell">
+      <section class="capture-column" aria-label="수술 전후 촬영 이미지">
+        <article class="capture-card" v-for="phase in phases" :key="phase.key">
+          <div class="capture-header">
+            <div>
+              <span class="phase-kicker">[[ phase.eyebrow ]]</span>
+              <h2>[[ phase.title ]]</h2>
+            </div>
+            <div class="capture-time" v-if="captureFor(phase.key)">
+              <span>촬영 시간</span>
+              <time>[[ formatDate(captureFor(phase.key).captured_at) ]]</time>
+            </div>
+            <span class="waiting-badge" v-else>촬영 대기</span>
+          </div>
+
+          <div class="image-stage" :class="{ 'is-empty': !captureFor(phase.key) }">
+            <template v-if="captureFor(phase.key)">
+              <img 
+                :src="getTimestampedUrl(captureFor(phase.key).image_url)" 
+                :alt="phase.title + ' 촬영 이미지'"
+              >
+              <div class="image-corner-label">
+                <span class="live-dot"></span>
+                분석 완료
+              </div>
+            </template>
+
+            <div class="empty-state" v-else>
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M11 17h42v32H11zM20 17l4-7h16l4 7M21 34a11 11 0 1 0 22 0 11 11 0 0 0-22 0z"/></svg>
+              <strong>[[ phase.title ]] 촬영 대기</strong>
+              <span>카메라 촬영 후 분석 결과가 자동으로 표시됩니다.</span>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="comparison-panel" aria-labelledby="comparison-title">
+        <div class="panel-header">
+          <div>
+            <span class="phase-kicker">INSTRUMENT RECONCILIATION</span>
+            <h2 id="comparison-title">수술도구 비교표</h2>
+          </div>
+          <label class="overlay-toggle">
+            <input type="checkbox" v-model="overlayVisible">
+            <span aria-hidden="true"></span>
+            박스·포인트 표시
+          </label>
+        </div>
+
+        <div class="progress-banner" :class="`status-${dashboard.status?.toLowerCase()}`">
+          <div class="progress-icon" aria-hidden="true">
+            <svg v-if="dashboard.status === 'COMPLETED'" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+            <svg v-else viewBox="0 0 24 24"><path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+          </div>
+          <div>
+            <strong>[[ sessionStatusTitle ]]</strong>
+            <span>[[ sessionStatusDescription ]]</span>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">수술도구</th>
+                <th scope="col" class="number-column">수술 전</th>
+                <th scope="col" class="number-column">수술 후</th>
+                <th scope="col" class="difference-column">차이</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="tool in activeTools" :key="tool.key" :class="{ 'has-difference': tool.difference !== 0 && tool.difference !== null }">
+                <th scope="row">
+                  <span class="tool-dot" :style="{ backgroundColor: tool.color }"></span>
+                  <span class="tool-name">
+                    <strong>[[ tool.name ]]</strong>
+                    </span>
+                </th>
+                <td class="count-cell">[[ displayCount(tool.before) ]]</td>
+                <td class="count-cell" :class="{ 'is-missing': tool.before > 0 && tool.after === 0 }">[[ displayCount(tool.after) ]]</td>
+                <td class="difference-cell" :class="differenceClass(tool.difference)">
+                  <strong>[[ displayDifference(tool.difference) ]]</strong>
+                  <small v-if="tool.difference < 0">미검출</small>
+                  <small v-else-if="tool.difference > 0">추가 감지</small>
+                  <small v-else-if="tool.difference === 0">일치</small>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">전체 도구</th>
+                <td>[[ totals.before ]]</td>
+                <td>[[ totals.after ]]</td>
+                <td class="difference-cell" :class="differenceClass(totals.difference)">
+                  <strong>[[ displayDifference(totals.difference) ]]</strong>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="panel-footer">
+          <div class="legend">
+            <span><i class="legend-box negative"></i>미검출·감소</span>
+            <span><i class="legend-box positive"></i>추가 감지</span>
+            <span><i class="legend-box same"></i>일치</span>
+          </div>
+          <p>AI 분석 결과이며 최종 확인이 필요합니다.</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast is-error" v-if="loadError" role="alert">
+      <strong>데이터를 불러오지 못했습니다.</strong>
+      <span>잠시 후 자동으로 다시 시도합니다.</span>
+    </div>
+
+    <div class="modal-backdrop" v-if="showResetModal" @click.self="showResetModal = false">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+        <div class="modal-icon">
+          <svg viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6M5.5 16a8 8 0 0 0 13-2M18.5 8A8 8 0 0 0 5.5 10"/></svg>
+        </div>
+        <h2 id="reset-title">새 수술을 시작할까요?</h2>
+        <p>현재 세션의 결과는 보관되고 화면은 수술 전 촬영 대기 상태로 초기화됩니다.</p>
+        <div class="modal-actions">
+          <button type="button" class="button-secondary" @click="showResetModal = false">취소</button>
+          <button type="button" class="button-danger" @click="resetSession" :disabled="resetting">[[ resetting ? '처리 중…' : '초기화' ]]</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', path='/vendor/vue.global.prod.js') }}"></script>
+  <script src="{{ url_for('static', path='/js/app.js') }}"></script>
+</body>
+</html>
