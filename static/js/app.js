@@ -1,6 +1,11 @@
 const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 const TOOL_PALETTE = {
+  "forceps": { name: "Forceps", color: "#ef4444" },
+  "hand_instrument": { name: "Hand Instrument", color: "#3b82f6" },
+  "retractor": { name: "Retractor", color: "#a855f7" },
+  "trocar": { name: "Trocar", color: "#22c55e" },
+
   "needle_holder": { name: "Needle Holder", color: "#ef4444" },
   "grasper": { name: "Grasper", color: "#3b82f6" },
   "clip_applier": { name: "Clip Applier", color: "#a855f7" },
@@ -31,11 +36,12 @@ createApp({
       { key: "after", title: "수술 후", eyebrow: "AFTER SURGERY" },
     ];
 
-    // AI 탐지 도구만 동적으로 렌더링 (0개인 것은 제외)
     const activeTools = computed(() => {
       const beforeCounts = dashboard.value.counts?.before || {};
       const afterCounts = dashboard.value.counts?.after || {};
       const allKeys = new Set([...Object.keys(beforeCounts), ...Object.keys(afterCounts)]);
+
+      const isCompleted = dashboard.value.status === 'COMPLETED';
 
       return Array.from(allKeys).map(key => {
         const b = beforeCounts[key] || 0;
@@ -46,7 +52,7 @@ createApp({
           color: TOOL_PALETTE[key]?.color || "#aaaaaa",
           before: b,
           after: a,
-          difference: a - b
+          difference: isCompleted ? (a - b) : null 
         };
       }).filter(tool => tool.before > 0 || tool.after > 0);
     });
@@ -54,10 +60,12 @@ createApp({
     const totals = computed(() => {
       const bSum = activeTools.value.reduce((sum, t) => sum + t.before, 0);
       const aSum = activeTools.value.reduce((sum, t) => sum + t.after, 0);
+      const isCompleted = dashboard.value.status === 'COMPLETED';
+
       return {
         before: activeTools.value.length ? bSum : "—",
         after: activeTools.value.length ? aSum : "—",
-        difference: activeTools.value.length ? aSum - bSum : null,
+        difference: (isCompleted && activeTools.value.length) ? (aSum - bSum) : null,
       };
     });
 
@@ -130,9 +138,19 @@ createApp({
       }
     }
 
-    function getTimestampedUrl(url) {
+    function getTimestampedUrl(url, captured_at) {
       if (!url) return "";
-      return `${url}?t=${new Date().getTime()}`;
+      if (!captured_at) return `${url}?t=${new Date().getTime()}`;
+      
+      const t = new Date(captured_at).getTime();
+      return `${url}?t=${t}`;
+    }
+
+    function countCellHighlight(diff) {
+      if (diff === null || diff === undefined || diff === 0) return "";
+      if (diff < 0) return "is-negative"; 
+      if (diff > 0) return "is-positive"; 
+      return "";
     }
 
     async function resetSession() {
@@ -158,12 +176,12 @@ createApp({
       if (pollTimer) window.clearInterval(pollTimer);
     });
 
-    return {
+return {
       dashboard, device, phases, activeTools, totals,
       lastSeenText, sessionStatusTitle, sessionStatusDescription,
       overlayVisible, showResetModal, resetting, loadError,
       captureFor, formatDate, displayCount, displayDifference,
-      differenceClass, resetSession, getTimestampedUrl,
+      differenceClass, countCellHighlight, resetSession, getTimestampedUrl
     };
   },
 }).mount("#app");

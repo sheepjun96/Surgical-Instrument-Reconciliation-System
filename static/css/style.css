@@ -45,182 +45,204 @@ button { cursor: pointer; }
 }
 
 .brand, .topbar-actions, .connection-card, .session-chip,
-.capture-header, .panel-header, .progress-banner, .tool-name,
+.panel-header, .progress-banner, .tool-name,
 .legend, .modal-actions { display: flex; align-items: center; }
 
+.modal-actions { display: flex; gap: 12px; width: 100%; margin-top: 10px; }
 .brand { gap: 13px; }
-.brand-mark {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 13px;
-  background: linear-gradient(145deg, #0f766e, #115e59);
-}
+.brand-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 13px; background: linear-gradient(145deg, #0f766e, #115e59); }
 .brand-mark svg { width: 23px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; }
 .brand h1 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -0.03em; }
 .brand p { margin: 3px 0 0; color: var(--muted); font-size: 10px; text-transform: uppercase; }
 
 .topbar-actions { gap: 12px; }
-.session-chip {
-  gap: 8px;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: var(--surface-soft);
-  color: var(--muted);
-  font-size: 12px;
-}
+.session-chip { gap: 8px; height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); color: var(--muted); font-size: 12px; }
 .session-chip strong { color: #93c5fd; font-size: 15px; }
-
-.connection-card {
-  min-width: 195px;
-  height: 50px;
-  gap: 11px;
-  padding: 0 15px;
-  border: 1px solid;
-  border-radius: 12px;
-}
+.connection-card { min-width: 195px; height: 50px; gap: 11px; padding: 0 15px; border: 1px solid; border-radius: 12px; }
 .connection-card.is-connected { background: #143324; border-color: #166534; }
 .connection-card.is-disconnected { background: var(--red-soft); border-color: #991b1b; }
 .connection-card strong { display: block; font-size: 13px; }
 .connection-card small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
 .status-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2); }
 .is-connected .status-dot { background: var(--green); box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2); }
-
-.reset-button {
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 11px;
-  background: var(--blue);
-  color: #fff;
-  font-weight: 700;
-  font-size: 12px;
-}
+.reset-button { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-radius: 11px; background: var(--blue); color: #fff; font-weight: 700; font-size: 12px; }
 .reset-button:hover { background: #2563eb; }
 .reset-button svg, .modal-icon svg { width: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 
+/* 1:1 완벽한 좌우 레이아웃 */
 .dashboard-shell {
   height: calc(100vh - 78px);
   min-height: 680px;
   display: grid;
-  grid-template-columns: minmax(590px, 1.35fr) minmax(465px, 1fr);
+  grid-template-columns: 1fr 1fr; 
   gap: 18px;
   padding: 18px;
 }
 
-.capture-column { display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.capture-card, .comparison-panel {
+/* 수술 전/후 컬럼 그리드 설정 (위아래 절반씩) */
+.capture-column { 
+  display: grid; 
+  grid-template-rows: repeat(2, minmax(0, 1fr)); 
+  gap: 16px;
+  min-height: 0; 
+}
+
+/* --- 여기서부터 핵심 3분할 캡처 카드 --- */
+.capture-card {
+  display: grid;
+  /* 가로로 '좌측텍스트(고정) - 이미지영역(가변) - 우측텍스트(고정)' 3분할 */
+  grid-template-columns: 100px 1fr 110px; 
+  gap: 16px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 17px;
   box-shadow: var(--shadow);
+  padding: 20px;
+  min-height: 0; /* 부모 크기 팽창 억제 */
 }
 
-.capture-card { display: flex; flex-direction: column; padding: 15px; }
-.capture-header { justify-content: space-between; gap: 16px; margin-bottom: 11px; }
-.phase-kicker { color: var(--teal); font-size: 9px; font-weight: 800; }
-.capture-header h2, .panel-header h2 { margin: 2px 0 0; font-size: 19px; }
-.capture-time span { display: block; color: var(--muted); font-size: 9px; text-align: right; }
-.capture-time time { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; text-align: right; }
-.waiting-badge { padding: 7px 10px; border-radius: 999px; background: #78350f; color: #fdba74; font-size: 10px; font-weight: 700; }
+/* 좌/우 텍스트 묶음 공통 설정 */
+.card-side {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start; /* 핵심: 무조건 위쪽에 위치시킴 */
+}
+.left-side { text-align: left; }
+.right-side { 
+  text-align: right; 
+  position: relative; 
+  display: flex; 
+  flex-direction: column; 
+}
 
-.image-stage {
+/* 텍스트 폰트 적당히 상향 */
+.phase-kicker { display: block; color: var(--teal); font-size: 11px; font-weight: 800; }
+.left-side h2, .panel-header h2 { margin: 4px 0 0; font-size: 22px; }
+.right-side span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px;}
+.right-side time { display: block; font-size: 15px; font-weight: 700; }
+.waiting-badge { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #78350f; color: #fdba74; font-size: 12px; font-weight: 700; text-align: center; }
+
+/* 중앙 이미지 영역 설정 */
+.card-center {
   position: relative;
-  flex: 1;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid #5c5c5c;
-  border-radius: 11px;
-  background: #1a1a1a;
-  aspect-ratio: 16/9;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent; /* 주변 배경색과 동기화 (검은 여백 제거) */
 }
-.image-stage img, .detection-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%;}
-.detection-overlay rect:not(.label-bg) { fill: none; stroke-width: 5; vector-effect: non-scaling-stroke; }
-.detection-overlay text { fill: #fff; font-size: 17px; font-weight: 700; }
-.image-corner-label {
-  position: absolute; right: 10px; bottom: 9px; display: flex; align-items: center; gap: 6px;
-  padding: 6px 9px; border-radius: 7px; background: rgba(0, 0, 0, 0.7); color: #fff; font-size: 9px; font-weight: 600;
-}
-.live-dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; }
-.image-stage.is-empty { background: #333333; border-style: dashed; }
-.empty-state { display: flex; flex-direction: column; align-items: center; color: var(--muted); }
-.empty-state svg { width: 48px; margin-bottom: 10px; stroke: #777; }
-.empty-state strong { color: #ddd; font-size: 14px; }
-.empty-state span { margin-top: 4px; font-size: 10px; }
 
-.comparison-panel { display: flex; flex-direction: column; padding: 20px; }
+.card-center img { 
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; 
+  height: 100%; 
+  object-fit: contain;
+}
+
+.image-corner-label {
+  margin-top: auto;
+  display: flex; 
+  bottom: 0px;
+  position: relative;
+  align-items: center;
+  justify-content: center; 
+  gap: 8px;
+  padding: 8px 12px; 
+  border-radius: 7px;
+  font-size: 13px; 
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.7); 
+  color: #fff;
+}
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; }
+.card-center.is-empty { background: #333333; border: 2px dashed #5c5c5c; border-radius: 11px;}
+.empty-state { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; color: var(--muted); text-align: center; }
+.empty-state svg { width: 48px; margin-bottom: 12px; stroke: #777; }
+.empty-state strong { color: #ddd; font-size: 16px; }
+.empty-state span { margin-top: 6px; font-size: 12px; }
+
+/* --- 오른쪽 비교표 및 패널 설정 --- */
+.comparison-panel { display: flex; flex-direction: column; padding: 22px; background: var(--surface); border: 1px solid var(--line); border-radius: 17px; box-shadow: var(--shadow); }
 .panel-header { justify-content: space-between; }
-.overlay-toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; font-weight: 600; cursor: pointer; }
+.overlay-toggle { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
 .overlay-toggle input { position: absolute; opacity: 0; }
-.overlay-toggle > span { position: relative; width: 34px; height: 20px; border-radius: 999px; background: #666; transition: .2s; }
-.overlay-toggle > span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: .2s; }
+.overlay-toggle > span { position: relative; width: 36px; height: 22px; border-radius: 999px; background: #666; transition: .2s; }
+.overlay-toggle > span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: .2s; }
 .overlay-toggle input:checked + span { background: var(--teal); }
 .overlay-toggle input:checked + span::after { transform: translateX(14px); }
 
-.progress-banner { position: relative; gap: 11px; margin-top: 16px; padding: 12px 13px; border: 1px solid #115e59; border-radius: 11px; background: var(--teal-soft); }
-.progress-icon { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 9px; background: var(--teal); color: #fff; }
-.progress-icon svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; }
-.progress-banner strong { display: block; font-size: 12px; }
-.progress-banner span { display: block; margin-top: 2px; color: #99f6e4; font-size: 9px; }
+.progress-banner { position: relative; gap: 12px; margin-top: 18px; padding: 16px; border: 1px solid #115e59; border-radius: 11px; background: var(--teal-soft); }
+.progress-icon { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: var(--teal); color: #fff; }
+.progress-icon svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 2.5; }
+.progress-banner strong { display: block; font-size: 15px; font-weight: 700;}
+.progress-banner span { display: block; margin-top: 4px; color: #99f6e4; font-size: 12px; }
 
-.table-wrap { flex: 1; margin-top: 14px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
-th, td { height: 58px; padding: 9px 13px; border-bottom: 1px solid var(--line); text-align: center; font-size: 13px; }
-thead th { position: sticky; top: 0; z-index: 1; height: 43px; background: #333333; color: #dddddd; font-size: 10px; font-weight: 700; }
-thead th:first-child { width: 46%; text-align: left; }
+/* 비교표 끊기지 않게 연결 (border-collapse: collapse 복구) */
+.table-wrap { flex: 1; margin-top: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { 
+  height: 70px; 
+  padding: 12px 14px; 
+  border-bottom: 1px solid var(--line); 
+  text-align: center; 
+  font-size: 16px;
+  vertical-align: middle;
+}
+thead th { position: sticky; top: 0; z-index: 1; height: 48px; background: #333333; color: #dddddd; font-size: 12px; font-weight: 700; border-bottom: none; }
+thead th:first-child { width: 44%; text-align: left; }
 .number-column { width: 16%; }
-.difference-column { width: 22%; }
-tbody th { display: flex; align-items: center; gap: 11px; text-align: left; font-weight: 500; }
-.tool-dot { width: 10px; height: 10px; border-radius: 50%; }
-.tool-name strong { font-size: 12px; color: #fff; }
-.count-cell { font-size: 19px; font-weight: 700; }
-.count-cell.is-missing { background: var(--red-soft); color: #fca5a5; }
-.difference-cell strong { display: block; font-size: 18px; }
-.difference-cell small { display: block; font-size: 8px; font-weight: 700; }
+.difference-column { width: 24%; }
+tbody th { 
+  text-align: left; 
+  font-weight: 500; 
+  height: 70px;
+}
+.th-content {
+  display: flex; 
+  align-items: center; 
+  gap: 14px;
+}
+.tool-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.tool-name strong { font-size: 15px; color: #fff; }
+
+.count-cell { font-size: 21px; font-weight: 700; }
+/* 수술 후 하이라이팅: 빈틈없이 셀 전체를 칠함 */
+.count-cell.is-negative { background: var(--red-soft); color: #fca5a5; }
+.count-cell.is-positive { background: var(--blue-soft); color: #93c5fd; }
+
+.difference-cell strong { display: block; font-size: 21px; font-weight: 800;}
+.difference-cell small { display: block; font-size: 11px; font-weight: 700; margin-top: 3px; }
 .difference-cell.is-negative { background: var(--red); color: #fff; }
 .difference-cell.is-positive { background: var(--blue); color: #fff; }
 .difference-cell.is-same { color: #a3b1bb; }
-tbody tr:hover th, tbody tr:hover td:not(.is-negative):not(.is-positive) { background-color: #555555; }
-tfoot th, tfoot td { height: 54px; border-bottom: 0; background: #383838; font-size: 17px; font-weight: 800; }
-tfoot th { text-align: left; font-size: 12px; }
 
-.panel-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; }
-.legend { gap: 12px; }
-.legend span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 8px; }
-.legend-box { width: 8px; height: 8px; border-radius: 2px; }
+/* 호버 시 겹치는 배경색 버그 수정 */
+tbody tr:hover th, tbody tr:hover td:not(.is-negative):not(.is-positive) { background-color: #555555; }
+
+tfoot th, tfoot td { height: 60px; border-bottom: 0; background: #383838; font-size: 20px; font-weight: 800; }
+tfoot th { text-align: left; font-size: 15px; }
+
+.panel-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 16px; }
+.legend { gap: 14px; }
+.legend span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 600;}
+.legend-box { width: 10px; height: 10px; border-radius: 2px; }
 .legend-box.negative { background: var(--red); }
 .legend-box.positive { background: var(--blue); }
 .legend-box.same { border: 1px solid #777; background: transparent; }
-.panel-footer p { margin: 0; color: #888; font-size: 8px; }
+.panel-footer p { margin: 0; color: #888; font-size: 12px; font-weight: 600; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); }
 .modal { width: min(430px, 100%); padding: 26px; border-radius: 18px; background: var(--surface); box-shadow: 0 25px 70px rgba(0,0,0,.5); text-align: center; }
 .modal-icon { width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 15px; background: var(--red-soft); color: #fca5a5; }
 .modal h2 { margin: 0; font-size: 20px; }
-.modal p { margin: 9px auto 20px; color: var(--muted); font-size: 11px; }
-.modal-actions button { min-width: 110px; height: 40px; border-radius: 9px; font-weight: 700; font-size: 11px; }
+.modal p { margin: 9px auto 20px; color: var(--muted); font-size: 13px; }
 .button-secondary { background: #555; border: 1px solid var(--line-strong); color: #fff; }
 .button-danger { background: var(--red); border: 0; color: #fff; }
 
 @media (max-width: 1250px) {
-  .dashboard-shell { grid-template-columns: minmax(560px, 1.18fr) minmax(450px, 1fr); }
+  .dashboard-shell { grid-template-columns: 1fr 1fr; }
   .session-chip { display: none; }
-}
-
-@media (max-height: 760px) {
-  .topbar { height: 68px; }
-  .dashboard-shell { height: calc(100vh - 68px); min-height: 620px; padding: 12px; gap: 12px; }
-  .capture-column { gap: 12px; }
-  .capture-card { padding: 11px; }
-  .capture-header { margin-bottom: 7px; }
-  .capture-header h2 { font-size: 16px; }
-  .comparison-panel { padding: 15px; }
-  th, td { height: 49px; }
 }
