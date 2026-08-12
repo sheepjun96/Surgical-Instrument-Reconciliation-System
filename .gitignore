@@ -5,6 +5,6 @@ __pycache__/
 .env
 data/uploads/*
 !data/uploads/.gitkeep
-static/ai_model/
 *.ckpt
 *.pth
+.pytest_cache/

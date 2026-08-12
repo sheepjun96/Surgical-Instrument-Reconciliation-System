@@ -125,10 +125,23 @@ createApp({
 
     async function loadLatest() {
       try {
+        const path = window.location.pathname;
+        const match = path.match(/^\/(\d+)$/);
+        
+        let dashboardUrl = "/api/dashboard/current";
+        if (match) {
+           dashboardUrl = `/api/dashboard/${match[1]}`;
+        }
+
         const [deviceData, dashboardData] = await Promise.all([
           fetchJson("/api/device/status"),
-          fetchJson("/api/dashboard/current"),
+          fetchJson(dashboardUrl),
         ]);
+
+        if (path === "/" || (match && dashboardData.session_id != match[1])) {
+            window.history.replaceState(null, "", `/${dashboardData.session_id}`);
+        }
+
         device.value = deviceData;
         dashboard.value = dashboardData;
         loadError.value = false;
@@ -156,9 +169,10 @@ createApp({
     async function resetSession() {
       resetting.value = true;
       try {
-        await fetchJson("/api/session/reset", { method: "POST" });
-        await loadLatest();
-        showResetModal.value = false;
+        const res = await fetchJson("/api/session/reset", { method: "POST" });
+        
+        // 새 세션을 발급받은 뒤, 브라우저 URL을 해당 세션 번호로 강제 이동
+        window.location.href = `/${res.session_id}`;
       } catch (error) {
         console.error(error);
         loadError.value = true;

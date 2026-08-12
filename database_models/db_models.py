@@ -1,36 +1,25 @@
 from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from datetime import datetime, timezone
 from database import Base
 
 class SurgicalSession(Base):
     __tablename__ = "surgical_sessions"
 
-    id = Column(Integer, primary_key=True, index=True)
-    status = Column(String(50), default="WAITING_BEFORE") # WAITING_BEFORE, WAITING_AFTER, COMPLETED
-    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    completed_at = Column(DateTime, nullable=True)
-    
-    final_comparison = Column(JSON, nullable=True) 
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    status = Column(String(50), default="WAITING_BEFORE")
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
 
-    captures = relationship("Capture", back_populates="session", cascade="all, delete-orphan")
+    # 수술 전 데이터
+    before_original_url = Column(String(255), nullable=True)
+    before_drawn_url = Column(String(255), nullable=True)
+    before_captured_at = Column(String(100), nullable=True)
+    before_counts = Column(JSON, default=dict)
 
-
-class Capture(Base):
-    __tablename__ = "captures"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("surgical_sessions.id"))
-    phase = Column(String(20)) # 'BEFORE' 또는 'AFTER'
-    
-    original_image_path = Column(String(255), nullable=False)
-    drawn_image_path = Column(String(255), nullable=True)
-    
-    rf_detr_raw = Column(JSON, nullable=True)
-    point_raw = Column(JSON, nullable=True)
-    
-    merged_counts = Column(JSON, nullable=True)
-    
-    captured_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-    session = relationship("SurgicalSession", back_populates="captures")
+    # 수술 후 데이터
+    after_original_url = Column(String(255), nullable=True)
+    after_drawn_url = Column(String(255), nullable=True)
+    after_captured_at = Column(String(100), nullable=True)
+    after_counts = Column(JSON, default=dict)
