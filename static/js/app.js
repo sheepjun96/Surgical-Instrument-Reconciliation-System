@@ -32,6 +32,8 @@ createApp({
     let pollTimer = null;
     const showAfterStream = ref(false);
     let afterStreamTimer = null;
+    const streamSrc = ref("");
+    let streamWs = null
 
     const phases = [
       { key: "before", title: "수술 전", eyebrow: "BEFORE SURGERY" },
@@ -189,6 +191,37 @@ createApp({
       return "";
     }
 
+    function connectStreamWebSocket() {
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/ws/stream/view`;
+      
+      streamWs = new WebSocket(wsUrl);
+      streamWs.binaryType = "blob";
+
+      streamWs.onmessage = (event) => {
+        if (streamSrc.value) {
+          URL.revokeObjectURL(streamSrc.value);
+        }
+        streamSrc.value = URL.createObjectURL(event.data);
+      };
+
+      streamWs.onclose = () => {
+        // 끊어지면 2초 뒤 재접속 시도
+        setTimeout(connectStreamWebSocket, 2000);
+      };
+    }
+
+    onMounted(() => {
+      loadLatest();
+      pollTimer = window.setInterval(loadLatest, 1000);
+      connectStreamWebSocket(); // 컴포넌트 로드 시 웹소켓 연결 시작
+    });
+
+    onUnmounted(() => {
+      if (pollTimer) window.clearInterval(pollTimer);
+      if (streamWs) streamWs.close();
+    });
+
     async function resetSession() {
       resetting.value = true;
       try {
@@ -218,7 +251,7 @@ return {
       lastSeenText, sessionStatusTitle, sessionStatusDescription,
       overlayVisible, showResetModal, resetting, loadError,
       captureFor, formatDate, displayCount, displayDifference,
-      differenceClass, countCellHighlight, resetSession, getTimestampedUrl, isStreamActive
+      differenceClass, countCellHighlight, resetSession, getTimestampedUrl, isStreamActive, streamSrc
     };
   },
 }).mount("#app");

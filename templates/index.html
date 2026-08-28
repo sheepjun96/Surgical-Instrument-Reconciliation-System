@@ -55,7 +55,7 @@
           <!-- [2] 가운데: 이미지 영역 -->
           <div class="card-center" :class="{ 'is-empty': !captureFor(phase.key) && !isStreamActive(phase.key) }">
             <template v-if="isStreamActive(phase.key)">
-              <img v-if="device.connected" src="/api/stream" alt="실시간 카메라 영상" class="live-stream-feed">
+              <img v-if="device.connected" :src="streamSrc" alt="실시간 카메라 영상" class="live-stream-feed">
 
               <div v-else class="empty-state">
                 <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M11 17h42v32H11zM20 17l4-7h16l4 7M21 34a11 11 0 1 0 22 0 11 11 0 0 0-22 0z"/></svg>

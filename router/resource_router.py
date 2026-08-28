@@ -1,6 +1,6 @@
 from pathlib import Path
-from fastapi import APIRouter, Request, UploadFile, File, Form, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -16,6 +16,27 @@ class HeartbeatRequest(BaseModel):
     device_id: str
     camera_ready: bool = True
     sent_at: str | None = None
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: bytes):
+        for connection in self.active_connections:
+            try:
+                await connection.send_bytes(message)
+            except Exception:
+                pass
+
+manager = ConnectionManager()
 
 @router.get("/")
 def root_redirect(db: Session = Depends(get_db)):
@@ -34,12 +55,10 @@ def device_status():
 def device_heartbeat(payload: HeartbeatRequest, db: Session = Depends(get_db)):
     return resource_service.register_heartbeat(payload.model_dump(), db)
 
-# 현재(가장 최신) 세션 데이터 요청
 @router.get("/api/dashboard/current")
 def current_dashboard(db: Session = Depends(get_db)):
     return resource_service.get_dashboard(db)
 
-# 특정 과거 세션 데이터 요청
 @router.get("/api/dashboard/{session_id}")
 def get_specific_dashboard(session_id: int, db: Session = Depends(get_db)):
     return resource_service.get_dashboard(db, session_id)
@@ -56,15 +75,23 @@ async def upload_capture(phase: str = Form(...), file: UploadFile = File(...), d
 def health():
     return {"status": "ok"}
 
-@router.post("/api/stream/push")
-async def push_stream(file: UploadFile = File(...)):
-    contents = await file.read()
-    resource_service.update_stream_frame(contents)
-    return {"ok": True}
+@router.websocket("/ws/stream/push")
+async def websocket_push(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            await manager.broadcast(data)
+    except WebSocketDisconnect:
+        pass
 
-@router.get("/api/stream")
-def get_stream():
-    return StreamingResponse(
-        resource_service.generate_mjpeg_stream(), 
-        media_type="multipart/x-mixed-replace; boundary=frame"
-    )
+# 브라우저가 영상을 받아보는 곳
+@router.websocket("/ws/stream/view")
+async def websocket_view(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # 브라우저 연결 유지용 더미 데이터 수신
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
