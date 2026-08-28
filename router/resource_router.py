@@ -1,6 +1,6 @@
 from pathlib import Path
 from fastapi import APIRouter, Request, UploadFile, File, Form, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -22,7 +22,7 @@ def root_redirect(db: Session = Depends(get_db)):
     session_obj = resource_service.get_or_create_latest_session(db)
     return RedirectResponse(url=f"/{session_obj.id}")
 
-@router.get("/{session_id}", response_class=HTMLResponse)
+@router.get("/{session_id:int}", response_class=HTMLResponse)
 def dashboard_page(request: Request, session_id: int):
     return templates.TemplateResponse(request=request, name="index.html")
 
@@ -55,3 +55,16 @@ async def upload_capture(phase: str = Form(...), file: UploadFile = File(...), d
 @router.get("/health")
 def health():
     return {"status": "ok"}
+
+@router.post("/api/stream/push")
+async def push_stream(file: UploadFile = File(...)):
+    contents = await file.read()
+    resource_service.update_stream_frame(contents)
+    return {"ok": True}
+
+@router.get("/api/stream")
+def get_stream():
+    return StreamingResponse(
+        resource_service.generate_mjpeg_stream(), 
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )

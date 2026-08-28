@@ -44,18 +44,27 @@
 
     <main class="dashboard-shell">
       <section class="capture-column" aria-label="수술 전후 촬영 이미지">
-        <!-- 3분할 가로 레이아웃이 적용된 capture-card -->
-        <article class="capture-card" v-for="phase in phases" :key="phase.key">
+        <article class="capture-card" v-for="phase in phases" :key="phase.key" :class="{ 'is-active-stream': isStreamActive(phase.key) }">
           
-          <!-- [1] 왼쪽: 수술 전/후 텍스트 (위쪽에 위치) -->
+          <!-- [1] 왼쪽: 수술 전/후 텍스트 -->
           <div class="card-side left-side">
             <span class="phase-kicker">[[ phase.eyebrow ]]</span>
             <h2>[[ phase.title ]]</h2>
           </div>
 
-          <!-- [2] 가운데: 이미지 영역 (16:9 비율 억제) -->
-          <div class="card-center" :class="{ 'is-empty': !captureFor(phase.key) }">
-            <template v-if="captureFor(phase.key)">
+          <!-- [2] 가운데: 이미지 영역 -->
+          <div class="card-center" :class="{ 'is-empty': !captureFor(phase.key) && !isStreamActive(phase.key) }">
+            <template v-if="isStreamActive(phase.key)">
+              <img v-if="device.connected" src="/api/stream" alt="실시간 카메라 영상" class="live-stream-feed">
+
+              <div v-else class="empty-state">
+                <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M11 17h42v32H11zM20 17l4-7h16l4 7M21 34a11 11 0 1 0 22 0 11 11 0 0 0-22 0z"/></svg>
+                <strong>카메라 연결 대기 중</strong>
+                <span>팅커보드 기기의 전원을 켜고 코드를 실행해주세요.</span>
+              </div>
+            </template>
+
+            <template v-else-if="captureFor(phase.key)">
               <img 
                 :src="overlayVisible ? getTimestampedUrl(captureFor(phase.key).drawn_url, captureFor(phase.key).captured_at) : getTimestampedUrl(captureFor(phase.key).original_url, captureFor(phase.key).captured_at)" 
                 :alt="phase.title + ' 촬영 이미지'"
@@ -64,12 +73,12 @@
 
             <div class="empty-state" v-else>
               <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M11 17h42v32H11zM20 17l4-7h16l4 7M21 34a11 11 0 1 0 22 0 11 11 0 0 0-22 0z"/></svg>
-              <strong>[[ phase.title ]] 촬영 대기</strong>
+              <strong>[[ phase.title ]] 촬영 대기 중</strong>
               <span>카메라 촬영 후 분석 결과가 자동으로 표시됩니다.</span>
             </div>
           </div>
 
-          <!-- [3] 오른쪽: 촬영 시간 텍스트 (위쪽에 위치) -->
+          <!-- [3] 오른쪽: 촬영 시간 텍스트 -->
           <div class="card-side right-side">
             <template v-if="captureFor(phase.key)">
               <span>촬영 시간</span>

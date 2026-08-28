@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os, cv2
+import json, os, cv2, time
 import numpy as np
 from pathlib import Path
 from copy import deepcopy
@@ -26,10 +26,13 @@ TOOL_MAPPING = {
     "trocar": {"name": "Trocar", "color": "#22c55e"},
 }
 
+# 스트리밍용 전역 변수
+_stream_frame = b""
+
 def _iso(dt: datetime) -> str:
     return dt.astimezone().isoformat(timespec="seconds")
 
-_device = {"device_id": "jetson-nano-01", "camera_ready": True, "last_seen_monotonic": None, "last_seen_at": None}
+_device = {"device_id": "tinkerboard-2s", "camera_ready": False, "last_seen_monotonic": None, "last_seen_at": None}
 
 def hex_to_bgr(hex_color):
     hex_color = hex_color.lstrip('#')
@@ -236,3 +239,15 @@ def reset_session(db: Session) -> dict:
         db.commit()
         db.refresh(new_session)
         return {"ok": True, "session_id": new_session.id, "status": new_session.status}
+
+def update_stream_frame(frame_bytes: bytes):
+    global _stream_frame
+    _stream_frame = frame_bytes
+
+def generate_mjpeg_stream():
+    while True:
+        if _stream_frame:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + _stream_frame + b'\r\n')
+        # 서버에서 프레임을 쏴주는 주기 (0.05초 = 최대 20fps 방어)
+        time.sleep(0.05)

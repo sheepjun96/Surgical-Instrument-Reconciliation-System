@@ -30,6 +30,8 @@ createApp({
     const resetting = ref(false);
     const loadError = ref(false);
     let pollTimer = null;
+    const showAfterStream = ref(false);
+    let afterStreamTimer = null;
 
     const phases = [
       { key: "before", title: "수술 전", eyebrow: "BEFORE SURGERY" },
@@ -104,6 +106,15 @@ createApp({
       }).format(new Date(value));
     }
 
+    function isStreamActive(phaseKey) {
+      if (phaseKey === 'before') {
+        return !dashboard.value.captures?.before;
+      } else if (phaseKey === 'after') {
+        return dashboard.value.captures?.before && !dashboard.value.captures?.after && showAfterStream.value;
+      }
+      return false;
+    }
+
     function displayCount(value) { return value === null || value === undefined ? "—" : value; }
     function displayDifference(value) {
       if (value === null || value === undefined) return "—";
@@ -140,6 +151,18 @@ createApp({
 
         if (path === "/" || (match && dashboardData.session_id != match[1])) {
             window.history.replaceState(null, "", `/${dashboardData.session_id}`);
+        }
+
+        if (dashboardData.captures?.before && !dashboardData.captures?.after) {
+        if (!showAfterStream.value && !afterStreamTimer) {
+            afterStreamTimer = setTimeout(() => {
+              showAfterStream.value = true;
+            }, 60000);
+          }
+        } else {
+          clearTimeout(afterStreamTimer);
+          afterStreamTimer = null;
+          showAfterStream.value = false;
         }
 
         device.value = deviceData;
@@ -195,7 +218,7 @@ return {
       lastSeenText, sessionStatusTitle, sessionStatusDescription,
       overlayVisible, showResetModal, resetting, loadError,
       captureFor, formatDate, displayCount, displayDifference,
-      differenceClass, countCellHighlight, resetSession, getTimestampedUrl
+      differenceClass, countCellHighlight, resetSession, getTimestampedUrl, isStreamActive
     };
   },
 }).mount("#app");
