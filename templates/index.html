@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
 </head>
 <body>
-  <div id="app" v-cloak>
+  <div id="app" v-cloak @click="closeSessionMenu">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
@@ -21,9 +21,21 @@
       </div>
 
       <div class="topbar-actions">
-        <div class="session-chip">
-          <span>현재 세션</span>
-          <strong>#[[ dashboard.session_id ?? '—' ]]</strong>
+        <div class="session-chip-wrapper" @click.stop>
+          <div class="session-chip" @click="toggleSessionMenu" style="cursor: pointer;">
+            <span>현재 세션</span>
+            <strong>#[[ dashboard.session_id ?? '—' ]] ▾</strong>
+          </div>
+          
+          <!-- 드롭다운 리스트 -->
+          <ul class="session-dropdown" v-show="showSessionMenu">
+            <li v-for="s in sessionList" :key="s.id" class="session-item">
+              <a :href="`/${s.id}`">
+                <strong>[[ s.id ]]</strong> [[ s.date_str ]]
+              </a>
+              <button type="button" class="delete-btn" @click="deleteSession(s.id)" aria-label="삭제">🗑️</button>
+            </li>
+          </ul>
         </div>
 
         <div class="connection-card" :class="device.connected ? 'is-connected' : 'is-disconnected'" data-testid="camera-status">
@@ -31,7 +43,7 @@
           <div>
             <strong>카메라 [[ device.connected ? '연결됨' : '미연결' ]]</strong>
             <small v-if="device.connected">마지막 응답 [[ lastSeenText ]]</small>
-            <small v-else>Jetson Nano 응답 대기 중</small>
+            <small v-else>카메라 응답 대기 중</small>
           </div>
         </div>
 
@@ -44,7 +56,7 @@
 
     <main class="dashboard-shell">
       <section class="capture-column" aria-label="수술 전후 촬영 이미지">
-        <article class="capture-card" v-for="phase in phases" :key="phase.key" :class="{ 'is-active-stream': isStreamActive(phase.key) }">
+        <article class="capture-card" v-for="phase in phases" :key="phase.key" :class="{ 'is-active-border': isBorderActive(phase.key) }">
           
           <!-- [1] 왼쪽: 수술 전/후 텍스트 -->
           <div class="card-side left-side">
@@ -56,7 +68,6 @@
           <div class="card-center" :class="{ 'is-empty': !captureFor(phase.key) && !isStreamActive(phase.key) }">
             <template v-if="isStreamActive(phase.key)">
               <img v-if="device.connected" :src="streamSrc" alt="실시간 카메라 영상" class="live-stream-feed">
-
               <div v-else class="empty-state">
                 <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M11 17h42v32H11zM20 17l4-7h16l4 7M21 34a11 11 0 1 0 22 0 11 11 0 0 0-22 0z"/></svg>
                 <strong>카메라 연결 대기 중</strong>
@@ -65,8 +76,14 @@
             </template>
 
             <template v-else-if="captureFor(phase.key)">
+              <div class="processing-overlay" v-if="!captureFor(phase.key).drawn_url">
+                <div class="spinner"></div>
+                <span>AI 분석 중...</span>
+              </div>
+              
               <img 
-                :src="overlayVisible ? getTimestampedUrl(captureFor(phase.key).drawn_url, captureFor(phase.key).captured_at) : getTimestampedUrl(captureFor(phase.key).original_url, captureFor(phase.key).captured_at)" 
+                v-if="captureFor(phase.key).drawn_url || captureFor(phase.key).original_url"
+                :src="overlayVisible && captureFor(phase.key).drawn_url ? getTimestampedUrl(captureFor(phase.key).drawn_url, captureFor(phase.key).captured_at) : getTimestampedUrl(captureFor(phase.key).original_url, captureFor(phase.key).captured_at)" 
                 :alt="phase.title + ' 촬영 이미지'"
               >
             </template>

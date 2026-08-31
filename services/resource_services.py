@@ -1,21 +1,24 @@
 from __future__ import annotations
-import json, os, cv2, time
+import json, os, cv2, time, shutil
 import numpy as np
 from pathlib import Path
 from copy import deepcopy
 from datetime import datetime, timezone
 from threading import Lock
 from time import monotonic
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile, BackgroundTasks
 from collections import Counter
+from sqlalchemy.orm import Session, sessionmaker
 
-from sqlalchemy.orm import Session
+from database import engine
 from database_models.db_models import SurgicalSession
 
 # AI 모듈 Import
 from services.ai_rfdetr import get_predictor as get_rfdetr_predictor
 from services.ai_colsr import get_colsr_predictor
 
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+_ai_lock = Lock()
 _lock = Lock()
 UPLOAD_DIR = Path("data/uploads")
 
@@ -44,6 +47,20 @@ def get_or_create_latest_session(db: Session):
         db.refresh(session_obj)
     return session_obj
 
+def get_expected_phase(session_obj) -> str:
+    if session_obj.status == "COMPLETED": return "complete"
+    
+    if session_obj.before_captured_at and not session_obj.after_original_url:
+        try:
+            cat = datetime.fromisoformat(session_obj.before_captured_at)
+            if (datetime.now(timezone.utc) - cat).total_seconds() < 60:
+                return "before"
+            return "after"
+        except: pass
+    
+    if not session_obj.before_captured_at: return "before"
+    return "complete"
+
 def get_dashboard(db: Session, session_id: int = None) -> dict:
     with _lock:
         session_obj = None
@@ -56,7 +73,7 @@ def get_dashboard(db: Session, session_id: int = None) -> dict:
         return {
             "session_id": session_obj.id,
             "status": session_obj.status,
-            "expected_phase": "complete" if session_obj.status == "COMPLETED" else ("before" if session_obj.status == "WAITING_BEFORE" else "after"),
+            "expected_phase": get_expected_phase(session_obj),
             "mock_mode": False,
             "captures": {
                 "before": {
@@ -76,7 +93,7 @@ def get_dashboard(db: Session, session_id: int = None) -> dict:
             }
         }
 
-async def process_capture_upload(file: UploadFile, phase: str, db: Session):
+async def process_capture_upload(file: UploadFile, phase: str, db: Session, bg_tasks: BackgroundTasks):
     with _lock:
         session_obj = get_or_create_latest_session(db)
         
@@ -85,7 +102,7 @@ async def process_capture_upload(file: UploadFile, phase: str, db: Session):
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         h, w = img.shape[:2]
-        max_dim = 1280
+        max_dim = 3500 
         if max(h, w) > max_dim:
             scale = max_dim / max(h, w)
             img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
@@ -93,108 +110,121 @@ async def process_capture_upload(file: UploadFile, phase: str, db: Session):
         session_dir = UPLOAD_DIR / str(session_obj.id)
         session_dir.mkdir(parents=True, exist_ok=True)
         
-        orig_path = session_dir / f"{phase}_original.jpg"
+        ts = int(time.time())
+        orig_path = session_dir / f"{phase}_original_{ts}.jpg"
         cv2.imwrite(str(orig_path), img)
-
-        rf_predictor = get_rfdetr_predictor()
-        colsr_predictor = get_colsr_predictor()
-
-        det_raw = rf_predictor.predict(str(orig_path))
-        
-        valid_points = []
-        counts_data = {}
-        drawn_img = img.copy()
-
-        for idx, d in enumerate(det_raw):
-            c_name = d.get("class_name", "unknown")
-            x1, y1, x2, y2 = map(int, d["bbox"])
-            
-            color_hex = TOOL_MAPPING.get(c_name, {}).get("color", "#aaaaaa")
-            label_text = f"{TOOL_MAPPING.get(c_name, {}).get('name', c_name)} {int(d.get('confidence', 1.0)*100)}%"
-            color = hex_to_bgr(color_hex)
-            
-            cv2.rectangle(drawn_img, (x1, y1), (x2, y2), color, 3)
-            (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-            cv2.rectangle(drawn_img, (x1, y1 - th - 10), (x1 + tw, y1), color, -1)
-            cv2.putText(drawn_img, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-
-            if c_name == "hand_instrument":
-                crop_x1, crop_y1 = max(0, x1), max(0, y1)
-                crop_x2, crop_y2 = min(w, x2), min(h, y2)
-                
-                crop_img = img[crop_y1:crop_y2, crop_x1:crop_x2]
-                
-                if crop_img.size == 0:
-                    continue
-                    
-                crop_filename = f"{phase}_crop_hand_inst_{idx}.jpg"
-                crop_path = session_dir / crop_filename
-                cv2.imwrite(str(crop_path), crop_img)
-                
-                pt_raw = colsr_predictor.predict(str(crop_path))
-                
-                MIN_DIST = 10
-                pt_raw_sorted = sorted(pt_raw, key=lambda x: x.get("confidence", 0.0), reverse=True)
-                
-                for pt in pt_raw_sorted:
-                    pt_class = pt.get("class_name", "unknown")
-                    abs_x = int(pt["x"]) + crop_x1
-                    abs_y = int(pt["y"]) + crop_y1
-                    
-                    is_duplicate = False
-                    for existing_pt in valid_points:
-                        if existing_pt["class_name"] == pt_class:
-                            dist = ((existing_pt["x"] - abs_x)**2 + (existing_pt["y"] - abs_y)**2)**0.5
-                            if dist < MIN_DIST:
-                                is_duplicate = True
-                                break
-                    
-                    if not is_duplicate:
-                        valid_points.append({
-                            "class_name": pt_class,
-                            "x": abs_x,
-                            "y": abs_y,
-                            "confidence": pt.get("confidence", 1.0)
-                        })
-                        counts_data[pt_class] = counts_data.get(pt_class, 0) + 1
-            else:
-                counts_data[c_name] = counts_data.get(c_name, 0) + 1
-
-        for p in valid_points:
-            p_name = p.get("class_name", "")
-            p_color = hex_to_bgr(TOOL_MAPPING.get(p_name, {}).get("color", "#aaaaaa"))
-            px, py = p["x"], p["y"]
-            cv2.circle(drawn_img, (px, py), 8, p_color, -1)
-            cv2.circle(drawn_img, (px, py), 8, (255, 255, 255), 2)
-            
-        drawn_path = session_dir / f"{phase}_drawn.jpg"
-        cv2.imwrite(str(drawn_path), drawn_img)
-
-        # JSON 저장은 유지
-        with open(session_dir / f"{phase}_detections.json", "w", encoding="utf-8") as f:
-            json.dump(det_raw, f, ensure_ascii=False, indent=2)
-            
-        with open(session_dir / f"{phase}_points_valid.json", "w", encoding="utf-8") as f:
-            json.dump(valid_points, f, ensure_ascii=False, indent=2)
 
         captured_time = _iso(datetime.now(timezone.utc))
 
-        # DB 레코드 업데이트
         if phase == "before":
             session_obj.before_original_url = f"/{orig_path.as_posix()}"
-            session_obj.before_drawn_url = f"/{drawn_path.as_posix()}"
             session_obj.before_captured_at = captured_time
-            session_obj.before_counts = counts_data
-            session_obj.status = "COMPLETED" if session_obj.after_original_url else "WAITING_AFTER"
+            session_obj.before_drawn_url = None # 재촬영 시 기존 박스 이미지 숨김
         elif phase == "after":
             session_obj.after_original_url = f"/{orig_path.as_posix()}"
-            session_obj.after_drawn_url = f"/{drawn_path.as_posix()}"
             session_obj.after_captured_at = captured_time
-            session_obj.after_counts = counts_data
-            session_obj.status = "COMPLETED" if session_obj.before_original_url else "WAITING_BEFORE"
+            session_obj.after_drawn_url = None
 
+        session_obj.status = "PROCESSING"
         db.commit()
-        return {"ok": True, "phase": phase}
+        
+        # 백그라운드로 AI 분석 넘기고 즉시 성공 반환 (Timeout 방지)
+        bg_tasks.add_task(run_ai_background, session_obj.id, phase, str(orig_path), img, ts)
+        return {"ok": True, "phase": phase, "status": "processing"}
+
+def run_ai_background(session_id: int, phase: str, orig_path: str, img: np.ndarray, ts: int):
+    # GPU 충돌 방지를 위해 한번에 하나씩만 분석
+    with _ai_lock:
+        db = SessionLocal()
+        try:
+            session_dir = UPLOAD_DIR / str(session_id)
+            rf_predictor = get_rfdetr_predictor()
+            colsr_predictor = get_colsr_predictor()
+
+            det_raw = rf_predictor.predict(orig_path)
+            valid_points = []
+            counts_data = {}
+            drawn_img = img.copy()
+            h, w = img.shape[:2]
+
+            for idx, d in enumerate(det_raw):
+                c_name = d.get("class_name", "unknown")
+                x1, y1, x2, y2 = map(int, d["bbox"])
+                
+                color_hex = TOOL_MAPPING.get(c_name, {}).get("color", "#aaaaaa")
+                label_text = f"{TOOL_MAPPING.get(c_name, {}).get('name', c_name)} {int(d.get('confidence', 1.0)*100)}%"
+                color = hex_to_bgr(color_hex)
+                
+                cv2.rectangle(drawn_img, (x1, y1), (x2, y2), color, 3)
+                (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
+                cv2.rectangle(drawn_img, (x1, y1 - th - 10), (x1 + tw, y1), color, -1)
+                cv2.putText(drawn_img, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+                if c_name == "hand_instrument":
+                    crop_x1, crop_y1 = max(0, x1), max(0, y1)
+                    crop_x2, crop_y2 = min(w, x2), min(h, y2)
+                    crop_img = img[crop_y1:crop_y2, crop_x1:crop_x2]
+                    
+                    if crop_img.size == 0: continue
+                    crop_path = session_dir / f"{phase}_crop_hand_{idx}_{ts}.jpg"
+                    cv2.imwrite(str(crop_path), crop_img)
+                    
+                    pt_raw = colsr_predictor.predict(str(crop_path))
+                    MIN_DIST = 10
+                    pt_raw_sorted = sorted(pt_raw, key=lambda x: x.get("confidence", 0.0), reverse=True)
+                    
+                    for pt in pt_raw_sorted:
+                        pt_class = pt.get("class_name", "unknown")
+                        abs_x = int(pt["x"]) + crop_x1
+                        abs_y = int(pt["y"]) + crop_y1
+                        
+                        is_duplicate = False
+                        for existing_pt in valid_points:
+                            if existing_pt["class_name"] == pt_class:
+                                dist = ((existing_pt["x"] - abs_x)**2 + (existing_pt["y"] - abs_y)**2)**0.5
+                                if dist < MIN_DIST:
+                                    is_duplicate = True; break
+                        if not is_duplicate:
+                            valid_points.append({"class_name": pt_class, "x": abs_x, "y": abs_y, "confidence": pt.get("confidence", 1.0)})
+                            counts_data[pt_class] = counts_data.get(pt_class, 0) + 1
+                else:
+                    counts_data[c_name] = counts_data.get(c_name, 0) + 1
+
+            for p in valid_points:
+                p_name = p.get("class_name", "")
+                p_color = hex_to_bgr(TOOL_MAPPING.get(p_name, {}).get("color", "#aaaaaa"))
+                px, py = p["x"], p["y"]
+                cv2.circle(drawn_img, (px, py), 8, p_color, -1)
+                cv2.circle(drawn_img, (px, py), 8, (255, 255, 255), 2)
+                
+            drawn_path = session_dir / f"{phase}_drawn_{ts}.jpg"
+            cv2.imwrite(str(drawn_path), drawn_img)
+            
+            with open(session_dir / f"{phase}_det_{ts}.json", "w", encoding="utf-8") as f:
+                json.dump(det_raw, f, ensure_ascii=False, indent=2)
+
+            # DB 결과 반영
+            session_obj = db.query(SurgicalSession).filter(SurgicalSession.id == session_id).first()
+            if session_obj:
+                if phase == "before":
+                    session_obj.before_drawn_url = f"/{drawn_path.as_posix()}"
+                    session_obj.before_counts = counts_data
+                elif phase == "after":
+                    session_obj.after_drawn_url = f"/{drawn_path.as_posix()}"
+                    session_obj.after_counts = counts_data
+
+                # 상태 복구
+                if session_obj.before_original_url and session_obj.after_original_url:
+                    session_obj.status = "COMPLETED"
+                elif session_obj.before_original_url:
+                    session_obj.status = "WAITING_AFTER"
+                else:
+                    session_obj.status = "WAITING_BEFORE"
+                db.commit()
+        except Exception as e:
+            print(f"AI Background Error: {e}")
+        finally:
+            db.close()
 
 def register_heartbeat(payload: dict, db: Session) -> dict:
     with _lock:
@@ -208,12 +238,21 @@ def register_heartbeat(payload: dict, db: Session) -> dict:
         session_obj = get_or_create_latest_session(db)
         
         # 디바이스에게 현재 최신 세션 상태를 응답
-        expected_phase = "complete" if session_obj.status == "COMPLETED" else ("before" if session_obj.status == "WAITING_BEFORE" else "after")
+        expected_phase = get_expected_phase(session_obj)
         return {
             "ok": True, "server_time": _iso(received_at),
             "session_id": session_obj.id,
             "expected_phase": expected_phase,
         }
+
+def get_all_sessions(db: Session) -> list:
+    sessions = db.query(SurgicalSession).order_by(SurgicalSession.id.desc()).all()
+    result = []
+    for s in sessions:
+        # 형식: 26-08-01 13:30
+        date_str = s.started_at.strftime("%y-%m-%d %H:%M") if s.started_at else ""
+        result.append({"id": s.id, "date_str": date_str})
+    return result
 
 def get_device_status() -> dict:
     with _lock:
@@ -228,6 +267,45 @@ def get_device_status() -> dict:
             "device_id": _device["device_id"], "connected": connected,
             "seconds_since_last_seen": seconds, "mock_mode": False,
         }
+
+def delete_and_reorder_session(session_id: int, db: Session) -> dict:
+    with _lock:
+        session_to_delete = db.query(SurgicalSession).filter(SurgicalSession.id == session_id).first()
+        if not session_to_delete:
+            return {"ok": False, "msg": "세션을 찾을 수 없습니다."}
+
+        target_dir = UPLOAD_DIR / str(session_id)
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+
+        db.delete(session_to_delete)
+        db.commit()
+
+        subsequent_sessions = db.query(SurgicalSession).filter(SurgicalSession.id > session_id).order_by(SurgicalSession.id.asc()).all()
+
+        for s in subsequent_sessions:
+            old_id = s.id
+            new_id = old_id - 1
+
+            old_dir = UPLOAD_DIR / str(old_id)
+            new_dir = UPLOAD_DIR / str(new_id)
+            if old_dir.exists():
+                os.rename(old_dir, new_dir)
+
+            s.id = new_id
+            if s.before_original_url:
+                s.before_original_url = s.before_original_url.replace(f"/data/uploads/{old_id}/", f"/data/uploads/{new_id}/")
+            if s.before_drawn_url:
+                s.before_drawn_url = s.before_drawn_url.replace(f"/data/uploads/{old_id}/", f"/data/uploads/{new_id}/")
+            if s.after_original_url:
+                s.after_original_url = s.after_original_url.replace(f"/data/uploads/{old_id}/", f"/data/uploads/{new_id}/")
+            if s.after_drawn_url:
+                s.after_drawn_url = s.after_drawn_url.replace(f"/data/uploads/{old_id}/", f"/data/uploads/{new_id}/")
+
+        db.commit()
+        
+        latest = get_or_create_latest_session(db)
+        return {"ok": True, "latest_session_id": latest.id}
 
 def reset_session(db: Session) -> dict:
     with _lock:

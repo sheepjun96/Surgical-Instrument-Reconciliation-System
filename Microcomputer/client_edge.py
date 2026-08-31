@@ -33,12 +33,18 @@ latest_frame = None
 is_running = True
 
 def heartbeat_loop():
+    global current_phase, is_running
     while True:
         payload = {
             "device_id": DEVICE_ID, "camera_ready": camera_is_ready,
             "sent_at": datetime.now(timezone.utc).astimezone().isoformat()
         }
-        try: requests.post(HEARTBEAT_API, json=payload, timeout=2)
+        try: 
+            res = requests.post(HEARTBEAT_API, json=payload, timeout=2)
+            if res.status_code == 200:
+                exp_phase = res.json().get("expected_phase")
+                if exp_phase in ["before", "after"]:
+                    current_phase = exp_phase
         except: pass
         time.sleep(1.5)
 
@@ -60,7 +66,6 @@ def stream_loop():
 
         # 프레임 바이너리 전송
         if latest_frame is not None:
-            # 1080p 리사이즈 및 인코딩
             stream_frame = cv2.resize(latest_frame, (STREAM_WIDTH, STREAM_HEIGHT))
             success, img_encoded = cv2.imencode('.jpg', stream_frame, [cv2.IMWRITE_JPEG_QUALITY, STREAM_QUALITY])
             
@@ -72,7 +77,6 @@ def stream_loop():
                     is_ws_connected = False
                     ws.close()
         
-        # 30FPS 조절
         time.sleep(1.0 / STREAM_FPS)
 
 def get_working_camera():
@@ -126,11 +130,9 @@ def main():
                         res = requests.post(CAPTURE_API, data={'phase': current_phase}, files={'file': ('capture.jpg', img_encoded.tobytes(), 'image/jpeg')}, timeout=5)
                         if res.status_code == 200:
                             print(f"✅ 전송 완료 ({current_phase})")
-                            current_phase = "after" if current_phase == "before" else "before"
                     except Exception as e:
                         print(f"❌ 전송 실패: {e}")
-                time.sleep(2)
-
+                time.sleep(2) # 중복 클릭 방지
     except KeyboardInterrupt:
         print("\n프로그램을 안전하게 종료합니다...")
     finally:

@@ -34,11 +34,36 @@ createApp({
     let afterStreamTimer = null;
     const streamSrc = ref("");
     let streamWs = null
+    const sessionList = ref([]);
+    const showSessionMenu = ref(false);
 
     const phases = [
       { key: "before", title: "수술 전", eyebrow: "BEFORE SURGERY" },
       { key: "after", title: "수술 후", eyebrow: "AFTER SURGERY" },
     ];
+
+    function toggleSessionMenu() {
+      showSessionMenu.value = !showSessionMenu.value;
+    }
+
+    function closeSessionMenu() {
+      showSessionMenu.value = false;
+    }
+
+    async function deleteSession(id) {
+      if (confirm(`${id}번 세션을 삭제하시겠습니까?`)) {
+        try {
+          const res = await fetchJson(`/api/session/${id}/delete`, { method: "POST" });
+          if (res.ok) {
+            // 삭제 성공 시, 현재 보고 있던 세션이 삭제되었을 수 있으므로 최신 세션으로 새로고침 이동
+            window.location.href = `/${res.latest_session_id}`;
+          }
+        } catch (error) {
+          console.error("세션 삭제 실패:", error);
+          alert("삭제 중 오류가 발생했습니다.");
+        }
+      }
+    }
 
     const activeTools = computed(() => {
       const beforeCounts = dashboard.value.counts?.before || {};
@@ -110,9 +135,10 @@ createApp({
 
     function isStreamActive(phaseKey) {
       if (phaseKey === 'before') {
-        return !dashboard.value.captures?.before;
+        return !dashboard.value.captures?.before; // before가 없을 때만 나옴
       } else if (phaseKey === 'after') {
-        return dashboard.value.captures?.before && !dashboard.value.captures?.after && showAfterStream.value;
+        // before를 찍자마자 1분 대기와 상관없이 즉시 after로 영상이 켜짐
+        return !!dashboard.value.captures?.before && !dashboard.value.captures?.after;
       }
       return false;
     }
@@ -136,6 +162,11 @@ createApp({
       return response.json();
     }
 
+    function isBorderActive(phaseKey) {
+      // 서버에서 계산한 1분 대기(expected_phase)에 따라 테두리가 남거나 이동함
+      return dashboard.value.expected_phase === phaseKey;
+    }
+
     async function loadLatest() {
       try {
         const path = window.location.pathname;
@@ -146,10 +177,13 @@ createApp({
            dashboardUrl = `/api/dashboard/${match[1]}`;
         }
 
-        const [deviceData, dashboardData] = await Promise.all([
+        const [deviceData, dashboardData, sessionsData] = await Promise.all([
           fetchJson("/api/device/status"),
           fetchJson(dashboardUrl),
+          fetchJson("/api/sessions")
         ]);
+
+        sessionList.value = sessionsData;
 
         if (path === "/" || (match && dashboardData.session_id != match[1])) {
             window.history.replaceState(null, "", `/${dashboardData.session_id}`);
@@ -251,7 +285,8 @@ return {
       lastSeenText, sessionStatusTitle, sessionStatusDescription,
       overlayVisible, showResetModal, resetting, loadError,
       captureFor, formatDate, displayCount, displayDifference,
-      differenceClass, countCellHighlight, resetSession, getTimestampedUrl, isStreamActive, streamSrc
+      differenceClass, countCellHighlight, resetSession, getTimestampedUrl, 
+      isStreamActive, streamSrc, isBorderActive, sessionList, showSessionMenu, toggleSessionMenu, closeSessionMenu, deleteSession
     };
   },
 }).mount("#app");

@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, UploadFile, File, Form, Depends, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -63,12 +63,25 @@ def current_dashboard(db: Session = Depends(get_db)):
 def get_specific_dashboard(session_id: int, db: Session = Depends(get_db)):
     return resource_service.get_dashboard(db, session_id)
 
+@router.get("/api/sessions")
+def get_sessions_list(db: Session = Depends(get_db)):
+    return resource_service.get_all_sessions(db)
+
+@router.post("/api/session/{session_id}/delete")
+def delete_session_endpoint(session_id: int, db: Session = Depends(get_db)):
+    return resource_service.delete_and_reorder_session(session_id, db)
+
 @router.post("/api/session/reset")
 def reset_session(db: Session = Depends(get_db)):
     return resource_service.reset_session(db)
 
 @router.post("/api/capture")
-async def upload_capture(phase: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_capture(
+    phase: str = Form(...), 
+    file: UploadFile = File(...), 
+    bg_tasks: BackgroundTasks = BackgroundTasks(),
+    db: Session = Depends(get_db)
+    ):
     return await resource_service.process_capture_upload(file, phase, db)
 
 @router.get("/health")

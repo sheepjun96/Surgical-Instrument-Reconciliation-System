@@ -79,7 +79,6 @@ button { cursor: pointer; }
   padding: 18px;
 }
 
-/* 수술 전/후 컬럼 그리드 설정 (위아래 절반씩) */
 .capture-column { 
   display: grid; 
   grid-template-rows: repeat(2, minmax(0, 1fr)); 
@@ -87,10 +86,20 @@ button { cursor: pointer; }
   min-height: 0; 
 }
 
-/* --- 여기서부터 핵심 3분할 캡처 카드 --- */
+.processing-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.75);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 10; color: white; font-weight: bold; font-size: 15px; border-radius: 11px;
+}
+.spinner {
+  width: 36px; height: 36px; border: 4px solid #fff; border-top-color: var(--teal);
+  border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 12px;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* --- 3분할 캡처 카드 --- */
 .capture-card {
   display: grid;
-  /* 가로로 '좌측텍스트(고정) - 이미지영역(가변) - 우측텍스트(고정)' 3분할 */
   grid-template-columns: 100px 1fr 110px; 
   gap: 16px;
   background: var(--surface);
@@ -99,6 +108,12 @@ button { cursor: pointer; }
   box-shadow: var(--shadow);
   padding: 20px;
   min-height: 0;
+}
+
+.capture-card.is-active-border {
+  border: 3px solid #ef4444; 
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+  transition: all 0.3s ease;
 }
 
 .capture-card.is-active-stream {
@@ -113,11 +128,10 @@ button { cursor: pointer; }
   object-fit: cover;
 }
 
-/* 좌/우 텍스트 묶음 공통 설정 */
 .card-side {
   display: flex;
   flex-direction: column;
-  justify-content: flex-start; /* 핵심: 무조건 위쪽에 위치시킴 */
+  justify-content: flex-start;
 }
 .left-side { text-align: left; }
 .right-side { 
@@ -127,7 +141,6 @@ button { cursor: pointer; }
   flex-direction: column; 
 }
 
-/* 텍스트 폰트 적당히 상향 */
 .phase-kicker { display: block; color: var(--teal); font-size: 11px; font-weight: 800; }
 .left-side h2, .panel-header h2 { margin: 4px 0 0; font-size: 22px; }
 .right-side span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px;}
@@ -143,7 +156,7 @@ button { cursor: pointer; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent; /* 주변 배경색과 동기화 (검은 여백 제거) */
+  background: transparent;
 }
 
 .card-center img { 
@@ -192,7 +205,6 @@ button { cursor: pointer; }
 .progress-banner strong { display: block; font-size: 15px; font-weight: 700;}
 .progress-banner span { display: block; margin-top: 4px; color: #99f6e4; font-size: 12px; }
 
-/* 비교표 끊기지 않게 연결 (border-collapse: collapse 복구) */
 .table-wrap { flex: 1; margin-top: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 th, td { 
@@ -221,7 +233,6 @@ tbody th {
 .tool-name strong { font-size: 15px; color: #fff; }
 
 .count-cell { font-size: 21px; font-weight: 700; }
-/* 수술 후 하이라이팅: 빈틈없이 셀 전체를 칠함 */
 .count-cell.is-negative { background: var(--red-soft); color: #fca5a5; }
 .count-cell.is-positive { background: var(--blue-soft); color: #93c5fd; }
 
@@ -231,7 +242,6 @@ tbody th {
 .difference-cell.is-positive { background: var(--blue); color: #fff; }
 .difference-cell.is-same { color: #a3b1bb; }
 
-/* 호버 시 겹치는 배경색 버그 수정 */
 tbody tr:hover th, tbody tr:hover td:not(.is-negative):not(.is-positive) { background-color: #555555; }
 
 tfoot th, tfoot td { height: 60px; border-bottom: 0; background: #383838; font-size: 20px; font-weight: 800; }
@@ -247,14 +257,83 @@ tfoot th { text-align: left; font-size: 15px; }
 .panel-footer p { margin: 0; color: #888; font-size: 12px; font-weight: 600; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px); }
-.modal { width: min(430px, 100%); padding: 26px; border-radius: 18px; background: var(--surface); box-shadow: 0 25px 70px rgba(0,0,0,.5); text-align: center; }
-.modal-icon { width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 15px; background: var(--red-soft); color: #fca5a5; }
-.modal h2 { margin: 0; font-size: 20px; }
-.modal p { margin: 9px auto 20px; color: var(--muted); font-size: 13px; }
+.modal { width: min(430px, 100%); padding: 32px 28px; border-radius: 20px; background: var(--surface); box-shadow: 0 25px 70px rgba(0,0,0,.5); text-align: center; }
+.modal-icon { 
+  width: 72px; height: 72px; margin: 0 auto 20px; border-radius: 20px; 
+  background: var(--red-soft); color: #fca5a5; 
+  display: flex; align-items: center; justify-content: center; 
+}
+.modal-icon svg { width: 36px !important; height: 36px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.modal h2 { margin: 0; font-size: 22px; font-weight: 800; }
+.modal p { margin: 12px auto 28px; color: var(--muted); font-size: 14px; line-height: 1.5; word-break: keep-all; }
+
+.modal-actions { display: flex; gap: 12px; width: 100%; }
+.modal-actions button { 
+  flex: 1;
+  height: 52px; font-size: 16px; font-weight: 700; 
+  border-radius: 12px; transition: background 0.2s ease; 
+}
 .button-secondary { background: #555; border: 1px solid var(--line-strong); color: #fff; }
+.button-secondary:hover { background: #666; }
 .button-danger { background: var(--red); border: 0; color: #fff; }
+.button-danger:hover { background: #dc2626; }
 
 @media (max-width: 1250px) {
   .dashboard-shell { grid-template-columns: 1fr 1fr; }
   .session-chip { display: none; }
 }
+
+.session-chip-wrapper { position: relative; }
+.session-chip { transition: background 0.2s; user-select: none; }
+.session-chip:hover { background: var(--surface); }
+
+.session-dropdown {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  width: 200px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  list-style: none;
+  padding: 8px 0;
+  margin: 0;
+  z-index: 100;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid #333;
+}
+.session-item:last-child { border-bottom: none; }
+.session-item:hover { background: var(--surface-soft); }
+
+.session-item a {
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 14px;
+  flex: 1;
+}
+.session-item a strong {
+  color: #93c5fd;
+  font-size: 15px;
+  margin-right: 6px;
+}
+
+.delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--red);
+  cursor: pointer;
+  padding: 4px;
+  font-size: 14px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.delete-btn:hover { opacity: 1; transform: scale(1.1); }
