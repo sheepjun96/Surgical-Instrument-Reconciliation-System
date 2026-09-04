@@ -82,7 +82,7 @@ async def upload_capture(
     bg_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db)
     ):
-    return await resource_service.process_capture_upload(file, phase, db)
+    return await resource_service.process_capture_upload(file, phase, db, bg_tasks)
 
 @router.get("/health")
 def health():

@@ -53,7 +53,7 @@
 
 4. **Run the server**
   ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000\
+python run_platform.py
  ```
 - 서버 실행 후, 브라우저에서 http://127.0.0.1:8000 (또는 설정된 IP)로 접속하여 모니터링 대시보드를 확인할 수 있습니다.
 

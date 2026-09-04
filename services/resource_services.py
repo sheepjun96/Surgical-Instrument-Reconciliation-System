@@ -9,6 +9,7 @@ from time import monotonic
 from fastapi import UploadFile, BackgroundTasks
 from collections import Counter
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql import func
 
 from database import engine
 from database_models.db_models import SurgicalSession
@@ -41,7 +42,8 @@ def hex_to_bgr(hex_color):
 def get_or_create_latest_session(db: Session):
     session_obj = db.query(SurgicalSession).order_by(SurgicalSession.id.desc()).first()
     if not session_obj:
-        session_obj = SurgicalSession()
+        max_id = db.query(func.max(SurgicalSession.id)).scalar() or 0
+        session_obj = SurgicalSession(id=max_id + 1)
         db.add(session_obj)
         db.commit()
         db.refresh(session_obj)
@@ -309,7 +311,8 @@ def delete_and_reorder_session(session_id: int, db: Session) -> dict:
 
 def reset_session(db: Session) -> dict:
     with _lock:
-        new_session = SurgicalSession()
+        max_id = db.query(func.max(SurgicalSession.id)).scalar() or 0
+        new_session = SurgicalSession(id=max_id + 1)
         db.add(new_session)
         db.commit()
         db.refresh(new_session)
