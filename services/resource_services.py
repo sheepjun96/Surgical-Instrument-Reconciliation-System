@@ -28,6 +28,10 @@ TOOL_MAPPING = {
     "hand_instrument": {"name": "Hand Instrument", "color": "#3b82f6"},
     "retractor": {"name": "Retractor", "color": "#a855f7"},
     "trocar": {"name": "Trocar", "color": "#22c55e"},
+    "scalpel": {"name": "Scalpel", "color": "#f59e0b"},
+    "frazier": {"name": "Frazier", "color": "#ec4899"},
+    "Hemostat_bundle": {"name": "Hemostat", "color": "#06b6d4"},
+    "Hemostat": {"name": "Hemostat", "color": "#06b6d4"},
 }
 
 def _iso(dt: datetime) -> str:
@@ -153,22 +157,29 @@ def run_ai_background(session_id: int, phase: str, orig_path: str, img: np.ndarr
                 c_name = d.get("class_name", "unknown")
                 x1, y1, x2, y2 = map(int, d["bbox"])
                 
+                # Hemostat_bundle → Hemostat 으로 통일 (표시 및 카운트용)
+                display_name = c_name
+                if c_name in ("Hemostat_bundle", "Hemostat"):
+                    display_name = "Hemostat"
+                
                 color_hex = TOOL_MAPPING.get(c_name, {}).get("color", "#aaaaaa")
-                label_text = f"{TOOL_MAPPING.get(c_name, {}).get('name', c_name)} {int(d.get('confidence', 1.0)*100)}%"
+                label_text = TOOL_MAPPING.get(c_name, {}).get('name', display_name)
                 color = hex_to_bgr(color_hex)
                 
                 cv2.rectangle(drawn_img, (x1, y1), (x2, y2), color, 3)
-                (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
-                cv2.rectangle(drawn_img, (x1, y1 - th - 10), (x1 + tw, y1), color, -1)
-                cv2.putText(drawn_img, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                font_scale = 3.2
+                font_thickness = 5
+                (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+                cv2.rectangle(drawn_img, (x1, y1 - th - 24), (x1 + tw + 12, y1), color, -1)
+                cv2.putText(drawn_img, label_text, (x1 + 6, y1 - 12), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness)
 
-                if c_name == "hand_instrument":
+                if c_name in ("Hemostat_bundle", "Hemostat"):
                     crop_x1, crop_y1 = max(0, x1), max(0, y1)
                     crop_x2, crop_y2 = min(w, x2), min(h, y2)
                     crop_img = img[crop_y1:crop_y2, crop_x1:crop_x2]
                     
                     if crop_img.size == 0: continue
-                    crop_path = session_dir / f"{phase}_crop_hand_{idx}_{ts}.jpg"
+                    crop_path = session_dir / f"{phase}_crop_hemostat_{idx}_{ts}.jpg"
                     cv2.imwrite(str(crop_path), crop_img)
                     
                     pt_raw = colsr_predictor.predict(str(crop_path))
@@ -176,7 +187,7 @@ def run_ai_background(session_id: int, phase: str, orig_path: str, img: np.ndarr
                     pt_raw_sorted = sorted(pt_raw, key=lambda x: x.get("confidence", 0.0), reverse=True)
                     
                     for pt in pt_raw_sorted:
-                        pt_class = pt.get("class_name", "unknown")
+                        pt_class = "Hemostat"
                         abs_x = int(pt["x"]) + crop_x1
                         abs_y = int(pt["y"]) + crop_y1
                         

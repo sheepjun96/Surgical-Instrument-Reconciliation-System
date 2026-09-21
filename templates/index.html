@@ -85,7 +85,10 @@
                 v-if="captureFor(phase.key).drawn_url || captureFor(phase.key).original_url"
                 :src="overlayVisible && captureFor(phase.key).drawn_url ? getTimestampedUrl(captureFor(phase.key).drawn_url, captureFor(phase.key).captured_at) : getTimestampedUrl(captureFor(phase.key).original_url, captureFor(phase.key).captured_at)" 
                 :alt="phase.title + ' 촬영 이미지'"
+                @mousemove="onImageMouseMove($event, phase.key)"
+                @mouseleave="onImageMouseLeave"
               >
+              <div class="zoom-indicator" v-if="zoomActive && zoomPhase === phase.key" :style="zoomIndicatorStyle"></div>
             </template>
 
             <div class="empty-state" v-else>
@@ -186,7 +189,18 @@
             <span><i class="legend-box positive"></i>추가 감지</span>
             <span><i class="legend-box same"></i>일치</span>
           </div>
-          <p>AI 분석 결과이며 최종 확인이 필요합니다.</p>
+          <p></p>
+        </div>
+
+        <!-- 확대 오버레이 -->
+        <div class="zoom-overlay" v-if="zoomActive">
+          <div class="zoom-overlay-header">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+            <span>확대 보기</span>
+          </div>
+          <div class="zoom-canvas-wrap">
+            <canvas ref="zoomCanvas" class="zoom-canvas"></canvas>
+          </div>
         </div>
       </section>
     </main>

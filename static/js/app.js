@@ -1,21 +1,105 @@
-const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue;
 
 const TOOL_PALETTE = {
   "forceps": { name: "Forceps", color: "#ef4444" },
   "hand_instrument": { name: "Hand Instrument", color: "#3b82f6" },
   "retractor": { name: "Retractor", color: "#a855f7" },
   "trocar": { name: "Trocar", color: "#22c55e" },
-
-  "needle_holder": { name: "Needle Holder", color: "#ef4444" },
-  "grasper": { name: "Grasper", color: "#3b82f6" },
-  "clip_applier": { name: "Clip Applier", color: "#a855f7" },
-  "scissors": { name: "Scissors", color: "#22c55e" },
-  "dissector": { name: "Dissector", color: "#f59e0b" },
-  "energy_device": { name: "Energy Device", color: "#ec4899" }
+  "scalpel": { name: "Scalpel", color: "#f59e0b" },
+  "frazier": { name: "Frazier", color: "#ec4899" },
+  "Hemostat_bundle": { name: "Hemostat", color: "#06b6d4" },
+  "Hemostat": { name: "Hemostat", color: "#06b6d4" },
 };
 
 createApp({
   delimiters: ["[[", "]]"],
+
+  data() {
+    return {
+      // 줌 관련 상태
+      zoomActive: false,
+      zoomPhase: null,
+      zoomIndicatorStyle: {},
+    };
+  },
+
+  methods: {
+    onImageMouseMove(event, phaseKey) {
+      const imgEl = event.target;
+      if (!imgEl || imgEl.tagName !== 'IMG') return;
+
+      this.zoomActive = true;
+      this.zoomPhase = phaseKey;
+
+      const rect = imgEl.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      const naturalW = imgEl.naturalWidth;
+      const naturalH = imgEl.naturalHeight;
+      const containerW = rect.width;
+      const containerH = rect.height;
+
+      const scale = Math.min(containerW / naturalW, containerH / naturalH);
+      const renderW = naturalW * scale;
+      const renderH = naturalH * scale;
+      const offsetX = (containerW - renderW) / 2;
+      const offsetY = (containerH - renderH) / 2;
+
+      if (mouseX < offsetX || mouseX > offsetX + renderW || mouseY < offsetY || mouseY > offsetY + renderH) {
+        this.onImageMouseLeave();
+        return;
+      }
+
+      const INDICATOR_SIZE = 30;
+      const halfInd = INDICATOR_SIZE / 2;
+      this.zoomIndicatorStyle = {
+        left: `${mouseX - halfInd}px`,
+        top: `${mouseY - halfInd}px`,
+        width: `${INDICATOR_SIZE}px`,
+        height: `${INDICATOR_SIZE}px`,
+      };
+
+      const imgX = (mouseX - offsetX) / scale;
+      const imgY = (mouseY - offsetY) / scale;
+
+      const cropSize = INDICATOR_SIZE / scale;
+      const halfCrop = cropSize / 2;
+      const sx = Math.max(0, Math.min(imgX - halfCrop, naturalW - cropSize));
+      const sy = Math.max(0, Math.min(imgY - halfCrop, naturalH - cropSize));
+      const sw = Math.min(cropSize, naturalW - sx);
+      const sh = Math.min(cropSize, naturalH - sy);
+
+      this.$nextTick(() => {
+        const canvas = this.$refs.zoomCanvas;
+        if (!canvas) return;
+        const wrapEl = canvas.parentElement;
+        const canvasW = wrapEl.clientWidth;
+        const canvasH = wrapEl.clientHeight;
+        const canvasSize = Math.min(canvasW, canvasH);
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.clearRect(0, 0, canvasSize, canvasSize);
+        ctx.drawImage(imgEl, sx, sy, sw, sh, 0, 0, canvasSize, canvasSize);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(canvasSize / 2, 0);
+        ctx.lineTo(canvasSize / 2, canvasSize);
+        ctx.moveTo(0, canvasSize / 2);
+        ctx.lineTo(canvasSize, canvasSize / 2);
+        ctx.stroke();
+      });
+    },
+
+    onImageMouseLeave() {
+      this.zoomActive = false;
+      this.zoomPhase = null;
+    },
+  },
 
   setup() {
     const dashboard = ref({
@@ -55,7 +139,6 @@ createApp({
         try {
           const res = await fetchJson(`/api/session/${id}/delete`, { method: "POST" });
           if (res.ok) {
-            // 삭제 성공 시, 현재 보고 있던 세션이 삭제되었을 수 있으므로 최신 세션으로 새로고침 이동
             window.location.href = `/${res.latest_session_id}`;
           }
         } catch (error) {
@@ -81,7 +164,7 @@ createApp({
           color: TOOL_PALETTE[key]?.color || "#aaaaaa",
           before: b,
           after: a,
-          difference: isCompleted ? (a - b) : null 
+          difference: isCompleted ? (a - b) : null
         };
       }).filter(tool => tool.before > 0 || tool.after > 0);
     });
@@ -135,9 +218,8 @@ createApp({
 
     function isStreamActive(phaseKey) {
       if (phaseKey === 'before') {
-        return !dashboard.value.captures?.before; // before가 없을 때만 나옴
+        return !dashboard.value.captures?.before;
       } else if (phaseKey === 'after') {
-        // before를 찍자마자 1분 대기와 상관없이 즉시 after로 영상이 켜짐
         return !!dashboard.value.captures?.before && !dashboard.value.captures?.after;
       }
       return false;
@@ -163,7 +245,6 @@ createApp({
     }
 
     function isBorderActive(phaseKey) {
-      // 서버에서 계산한 1분 대기(expected_phase)에 따라 테두리가 남거나 이동함
       return dashboard.value.expected_phase === phaseKey;
     }
 
@@ -171,10 +252,10 @@ createApp({
       try {
         const path = window.location.pathname;
         const match = path.match(/^\/(\d+)$/);
-        
+
         let dashboardUrl = "/api/dashboard/current";
         if (match) {
-           dashboardUrl = `/api/dashboard/${match[1]}`;
+          dashboardUrl = `/api/dashboard/${match[1]}`;
         }
 
         const [deviceData, dashboardData, sessionsData] = await Promise.all([
@@ -186,11 +267,11 @@ createApp({
         sessionList.value = sessionsData;
 
         if (path === "/" || (match && dashboardData.session_id != match[1])) {
-            window.history.replaceState(null, "", `/${dashboardData.session_id}`);
+          window.history.replaceState(null, "", `/${dashboardData.session_id}`);
         }
 
         if (dashboardData.captures?.before && !dashboardData.captures?.after) {
-        if (!showAfterStream.value && !afterStreamTimer) {
+          if (!showAfterStream.value && !afterStreamTimer) {
             afterStreamTimer = setTimeout(() => {
               showAfterStream.value = true;
             }, 60000);
@@ -213,22 +294,22 @@ createApp({
     function getTimestampedUrl(url, captured_at) {
       if (!url) return "";
       if (!captured_at) return `${url}?t=${new Date().getTime()}`;
-      
+
       const t = new Date(captured_at).getTime();
       return `${url}?t=${t}`;
     }
 
     function countCellHighlight(diff) {
       if (diff === null || diff === undefined || diff === 0) return "";
-      if (diff < 0) return "is-negative"; 
-      if (diff > 0) return "is-positive"; 
+      if (diff < 0) return "is-negative";
+      if (diff > 0) return "is-positive";
       return "";
     }
 
     function connectStreamWebSocket() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/ws/stream/view`;
-      
+
       streamWs = new WebSocket(wsUrl);
       streamWs.binaryType = "blob";
 
@@ -248,7 +329,7 @@ createApp({
     onMounted(() => {
       loadLatest();
       pollTimer = window.setInterval(loadLatest, 1000);
-      connectStreamWebSocket(); // 컴포넌트 로드 시 웹소켓 연결 시작
+      connectStreamWebSocket();
     });
 
     onUnmounted(() => {
@@ -260,8 +341,6 @@ createApp({
       resetting.value = true;
       try {
         const res = await fetchJson("/api/session/reset", { method: "POST" });
-        
-        // 새 세션을 발급받은 뒤, 브라우저 URL을 해당 세션 번호로 강제 이동
         window.location.href = `/${res.session_id}`;
       } catch (error) {
         console.error(error);
@@ -271,22 +350,13 @@ createApp({
       }
     }
 
-    onMounted(() => {
-      loadLatest();
-      pollTimer = window.setInterval(loadLatest, 1000);
-    });
-
-    onUnmounted(() => {
-      if (pollTimer) window.clearInterval(pollTimer);
-    });
-
-return {
+    return {
       dashboard, device, phases, activeTools, totals,
       lastSeenText, sessionStatusTitle, sessionStatusDescription,
       overlayVisible, showResetModal, resetting, loadError,
       captureFor, formatDate, displayCount, displayDifference,
-      differenceClass, countCellHighlight, resetSession, getTimestampedUrl, 
-      isStreamActive, streamSrc, isBorderActive, sessionList, showSessionMenu, toggleSessionMenu, closeSessionMenu, deleteSession
+      differenceClass, countCellHighlight, resetSession, getTimestampedUrl,
+      isStreamActive, streamSrc, isBorderActive, sessionList, showSessionMenu, toggleSessionMenu, closeSessionMenu, deleteSession,
     };
   },
 }).mount("#app");

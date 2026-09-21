@@ -2,10 +2,9 @@ import os
 import torch
 from rfdetr import RFDETRSmall
 
-CKPT_PATH = "static/ai_model/checkpoint_99.ckpt"
-TEMP_PTH_PATH = "static/ai_model/temp_weights.pth"
+PTH_PATH = "static/ai_model/rf-detr.pth"
 
-CLASS_NAMES = ['forceps', 'hand_instrument', 'retractor', 'trocar']
+CLASS_NAMES = ['forceps', 'hand_instrument', 'retractor', 'trocar', 'scalpel', 'frazier', 'Hemostat_bundle']
 CONFIDENCE_THRESHOLD = 0.5
 
 class RFDETRPredictor:
@@ -17,22 +16,12 @@ class RFDETRPredictor:
 
     def _load_model(self):
         print("Loading RF-DETR model...")
-        if not os.path.exists(CKPT_PATH):
-            print(f"Warning: Checkpoint file not found at {CKPT_PATH}")
+        if not os.path.exists(PTH_PATH):
+            print(f"Warning: Model file not found at {PTH_PATH}")
             self.model = None
             return
 
-        ckpt = torch.load(CKPT_PATH, map_location="cpu", weights_only=False)
-        pure_state_dict = {
-            k.replace("model.", "") if k.startswith("model.") else k: v 
-            for k, v in ckpt["state_dict"].items()
-        }
-        torch.save({"model": pure_state_dict}, TEMP_PTH_PATH)
-        
-        self.model = RFDETRSmall(pretrain_weights=TEMP_PTH_PATH, num_classes=len(self.class_names))
-        
-        if os.path.exists(TEMP_PTH_PATH):
-            os.remove(TEMP_PTH_PATH)
+        self.model = RFDETRSmall(pretrain_weights=PTH_PATH, num_classes=len(self.class_names))
             
         print("RF-DETR model loaded successfully.")
 
