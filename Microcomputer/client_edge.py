@@ -40,7 +40,7 @@ def heartbeat_loop():
             "sent_at": datetime.now(timezone.utc).astimezone().isoformat()
         }
         try: 
-            res = requests.post(HEARTBEAT_API, json=payload, timeout=2)
+            res = requests.post(HEARTBEAT_API, json=payload, timeout=15)
             if res.status_code == 200:
                 exp_phase = res.json().get("expected_phase")
                 if exp_phase in ["before", "after"]:

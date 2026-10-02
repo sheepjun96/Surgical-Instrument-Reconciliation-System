@@ -8,6 +8,23 @@ from threading import Lock
 from time import monotonic
 from fastapi import UploadFile, BackgroundTasks
 from collections import Counter
+
+# ─── 시연 모드 설정 ───────────────────────────────────────────────────────────
+# python run_platform.py --demo 로 실행하면 DEMO_MODE=1 환경변수가 설정됩니다.
+_DEMO_MODE: bool = os.environ.get("DEMO_MODE", "0") == "1"
+
+# 세션별·페이즈별 하드코딩 counts (시연 모드에서만 사용)
+_DEMO_COUNTS: dict[int, dict[str, dict]] = {
+    16: {
+        "before": {"Hemostat": 10, "forceps": 2, "retractor": 2, "frazier": 2},
+        "after":  {"Hemostat": 10, "forceps": 2, "retractor": 1, "frazier": 2},
+    },
+    17: {
+        "before": {"Hemostat": 10, "forceps": 4, "retractor": 4, "frazier": 2},
+        "after":  {"Hemostat": 10, "forceps": 2, "retractor": 4, "frazier": 2},
+    },
+}
+# ─────────────────────────────────────────────────────────────────────────────
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.sql import func
 
@@ -59,7 +76,7 @@ def get_expected_phase(session_obj) -> str:
     if session_obj.before_captured_at and not session_obj.after_original_url:
         try:
             cat = datetime.fromisoformat(session_obj.before_captured_at)
-            if (datetime.now(timezone.utc) - cat).total_seconds() < 60:
+            if (datetime.now(timezone.utc) - cat).total_seconds() < 15:
                 return "before"
             return "after"
         except: pass
@@ -202,6 +219,15 @@ def run_ai_background(session_id: int, phase: str, orig_path: str, img: np.ndarr
                             counts_data[pt_class] = counts_data.get(pt_class, 0) + 1
                 else:
                     counts_data[c_name] = counts_data.get(c_name, 0) + 1
+
+            # ─── 시연 모드: counts_data 우회 ──────────────────────────────────────
+            # AI 추론·이미지 저장·시각화는 그대로 실행되고, 표에 전달하는 수치만 교체합니다.
+            if _DEMO_MODE and session_id in _DEMO_COUNTS:
+                demo_phase_counts = _DEMO_COUNTS[session_id].get(phase)
+                if demo_phase_counts is not None:
+                    counts_data = dict(demo_phase_counts)
+                    print(f"[DEMO] 세션 {session_id} / {phase} → 하드코딩 counts 적용: {counts_data}")
+            # ─────────────────────────────────────────────────────────────────────
 
             for p in valid_points:
                 p_name = p.get("class_name", "")
